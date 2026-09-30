@@ -6,6 +6,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Xcode's own iPhoneOS SDK does not ship the private framework stubs (the
+# preference bundle links against Preferences.framework), so build against the
+# theos/sdks copy of the iOS 16.5 SDK instead.
+env:
+  SDK_VERSION: "16.5"
+
 jobs:
   build:
     name: Build (${{ matrix.name }})
@@ -32,6 +38,7 @@ jobs:
           # --recursive is required: rootless.h (vendor/include), libroot and the
           # Cephei/CepheiPrefs frameworks (vendor/lib) are all submodules.
           git clone --recursive https://github.com/theos/theos.git "$HOME/theos"
+          git clone --depth 1 https://github.com/theos/sdks.git "$HOME/theos/sdks"
           echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
           echo "$HOME/theos/bin" >> "$GITHUB_PATH"
 
@@ -40,7 +47,9 @@ jobs:
 
       - name: Build package
         run: |
-          make package FINALPACKAGE=1 ${{ matrix.make_args }}
+          make package FINALPACKAGE=1 \
+            SYSROOT="$THEOS/sdks/iPhoneOS$SDK_VERSION.sdk" \
+            ${{ matrix.make_args }}
           ls -l packages/
 
       - name: Verify package
@@ -49,7 +58,7 @@ jobs:
           echo "Package: $deb"
           dpkg-deb -I "$deb"
           echo "--- payload (top levels) ---"
-          dpkg-deb -c "$deb" | head -n 30
+          dpkg-deb -c "$deb" | head -n 40
 
       - name: Upload .deb
         uses: actions/upload-artifact@v4
